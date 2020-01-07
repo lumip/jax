@@ -330,6 +330,26 @@ class LaxControlFlowTest(jtu.JaxTestCase):
     with self.assertRaisesRegex(
       TypeError, "arguments to fori_loop must have equal types"):
       lax.fori_loop(onp.int16(0), np.int32(10), (lambda i, c: c), np.float32(7))
+    # the following are related to issue #1218
+    with self.assertRaisesRegex(
+      TypeError, "upper argument to fori_loop .* cannot"):
+      lax.fori_loop(2**31-10, 2**31, (lambda i, c: c), 3.)
+      lax.fori_loop(onp.int64(2**31-10), onp.int64(2**31), (lambda i, c: c), 3.)
+    with self.assertRaisesRegex(
+      TypeError, "lower argument to fori_loop .* cannot"):
+      lax.fori_loop(2**31, 15, (lambda i, c: c), 3.)
+      lax.fori_loop(onp.int64(2**31), 15, (lambda i, c: c), 3.)
+    # verify that no error is raised when explicitely casting to int32 beforehand
+    val = lax.fori_loop(onp.int32(0), onp.int32(2**32+10), (lambda i, c: c+1), 0)
+    self.assertEqual(val, 10)
+
+  def testForiLoopWorksForPositiveInt32ValuesIssue1218(self):
+    val = lax.fori_loop(2**31-10, 2**31-1, (lambda i, c: c+1), 2**31-10)
+    self.assertEqual(val, 2**31-1, "fori_loop not having expected iteration count below positive 32 bit cutoff")
+
+    val = lax.fori_loop(onp.int32(2**31-10), onp.int32(2**31-1), (lambda i, c: c+1), 2**31-10)
+    self.assertEqual(val, 2**31-1, "fori_loop not having expected iteration count below positive 32 bit cutoff")
+
 
   def testForiLoopBatched(self):
     def body_fun(i, loop_carry):

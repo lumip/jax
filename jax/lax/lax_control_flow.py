@@ -95,6 +95,18 @@ def _fori_body_fun(body_fun):
     return lax.add(i, lax._const(i, 1)), upper, body_fun(i, x)
   return while_body_fun
 
+def _is_index_cast_okay(value, value_dtype):
+  """Check whether casting a value to a certain type reproduces the same value.
+
+  Currently used to verify that casting lower and upper bound in fori_loop
+  does not cause overflow issues.
+  """
+  if isinstance(value, int) or isinstance(value, onp.int64):
+    cast_value = onp.array(value, dtype=value_dtype)
+    return cast_value == value
+  else:
+    return True
+
 def fori_loop(lower, upper, body_fun, init_val):
   """Loop from ``lower`` to ``upper`` by reduction to ``while_loop``.
 
@@ -135,6 +147,16 @@ def fori_loop(lower, upper, body_fun, init_val):
   # TODO: perhaps do more type checking here, for better error messages.
   lower_dtype = dtypes.canonicalize_dtype(lax.dtype(lower))
   upper_dtype = dtypes.canonicalize_dtype(lax.dtype(upper))
+  if not _is_index_cast_okay(lower, lower_dtype):
+    msg = ("lower argument to fori_loop <{}> cannot be represented by its correspondent type {}.\n"
+           "This would cause a wrong number of loop iterations.\n"
+           "Try setting JAX_ENABLE_X64=True for 64 bit loop indices.")
+    raise TypeError(msg.format(lower, lower_dtype))
+  if not _is_index_cast_okay(upper, upper_dtype):
+    msg = ("upper argument to fori_loop <{}> cannot be represented by its correspondent type {}.\n"
+           "This would cause a wrong number of loop iterations.\n"
+           "Try setting JAX_ENABLE_X64=True for 64 bit loop indices.")
+    raise TypeError(msg.format(upper, upper_dtype))
   if lower_dtype != upper_dtype:
     msg = ("lower and upper arguments to fori_loop must have equal types, "
            "got {} and {}")
@@ -142,7 +164,6 @@ def fori_loop(lower, upper, body_fun, init_val):
   _, _, result = while_loop(_fori_cond_fun, _fori_body_fun(body_fun),
                             (lower, upper, init_val))
   return result
-
 
 def while_loop(cond_fun, body_fun, init_val):
   """Call ``body_fun`` repeatedly in a loop while ``cond_fun`` is True.
